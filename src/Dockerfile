@@ -43,4 +43,4 @@ USER appuser
 COPY . .
 
 # Run the application.
-CMD python app.py
+CMD python ${APP_SCRIPT}

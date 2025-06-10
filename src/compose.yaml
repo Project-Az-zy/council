@@ -8,3 +8,15 @@ services:
     volumes:
       - ../personalities:/personalities
     env_file: "../secrets.env"
+    environment:
+      - APP_SCRIPT=council.py
+  gen_personality:
+    build:
+      context: .
+    stdin_open: true
+    tty: true
+    volumes:
+      - ../personalities:/personalities
+    env_file: "../secrets.env"
+    environment:
+      - APP_SCRIPT=gen_personality.py
