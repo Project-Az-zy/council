@@ -5,3 +5,6 @@ services:
       context: .
     stdin_open: true
     tty: true
+    volumes:
+      - ../personalities:/personalities
+    env_file: "../secrets.env"
