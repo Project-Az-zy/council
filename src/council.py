@@ -88,7 +88,7 @@ class Councilor:
 
 class CouncilSession:
     def __init__(self):
-        paths = [f for f in listdir(PERSONALITIES_PATH) if isfile(join(PERSONALITIES_PATH, f))]
+        paths = [f for f in listdir(PERSONALITIES_PATH) if isfile(join(PERSONALITIES_PATH, f)) and f.endswith(".person")]
         random.shuffle(paths)
         base_color = RandColor(400)
         self.councilors = [Councilor(p, base_color=base_color) for p in paths]
@@ -100,7 +100,7 @@ class CouncilSession:
         councilor_names = [c.real_id for c in self.councilors]
         councilor_names.sort()
         print(colored(f"[ Session convened: {', '.join(councilor_names)} ]", "white", attrs=["bold"]))
-        rounds = 8
+        rounds = 12
         last_speaker = None
         history = [("Dilemma", input_dilemma)]
 
