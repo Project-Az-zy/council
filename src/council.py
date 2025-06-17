@@ -7,11 +7,13 @@ from os.path import isfile, join
 from google import genai
 from google.genai import types
 from termcolor import colored
+from pydantic import BaseModel
 
 print("\033[H\033[2J", end="")
 print("\033[H\033[3J", end="")
 
 PERSONALITIES_PATH = "/personalities"
+COUNCILOR_COUNT = 5
 
 class RandColor:
     def __init__(self, strength: int):
@@ -50,13 +52,17 @@ class Councilor:
     last_id = 0
 
     def __init__(self, path: str, *, base_color: RandColor):
-        Councilor.last_id += 1
-        self.anon_id = f'C-{Councilor.last_id}'
+        self.anon_id = '?'
         self.real_id = path.split(".")[0].split("-")[-1]
-        self.phrase = path.split("-")[0]
         self.color = base_color.variation(90)
         with open(f"{PERSONALITIES_PATH}/{path}") as f:
-            self.personality = json.loads(f.read())["personality"]
+            person_file = json.loads(f.read())
+            self.personality = person_file["personality"]
+            self.keywords = ', '.join(person_file["keywords"])
+
+    def assign_id(self) -> None:
+        Councilor.last_id += 1
+        self.anon_id = f'C-{Councilor.last_id}'
 
     def _normalize_history(self, history: list[tuple[str, str]]) -> list[str]:
         return [f"{h[0]}: {h[1]}" for h in history]
@@ -66,7 +72,7 @@ class Councilor:
         response = client.models.generate_content(
             model="gemini-2.0-flash-lite",
             config=types.GenerateContentConfig(
-                system_instruction=f"You are a part of an AI council designed to resolve dilemmas through cooperation, councilor {self.anon_id}. Your goal is to convince others and the listening audience of your worldview. Follow the proper debate practices and try not to repeat your argumentation. Your responses should be short, no more than a few sentences. Assume following personality:\n\n{self.personality}",
+                system_instruction=f"You are a part of an AI council designed to resolve dilemmas through cooperation, councilor {self.anon_id}. Your goal is to convince others and the listening audience of your worldview. Follow the proper debate practices and try not to repeat your argumentation. Your responses should be short, no more than a few sentences, and without any complex formatting. Assume following personality:\n\n{self.personality}",
                 max_output_tokens=11000,
             ),
             contents=history
@@ -88,18 +94,44 @@ class Councilor:
 
 class CouncilSession:
     def __init__(self):
-        paths = [f for f in listdir(PERSONALITIES_PATH) if isfile(join(PERSONALITIES_PATH, f)) and f.endswith(".person")]
-        random.shuffle(paths)
-        base_color = RandColor(400)
-        self.councilors = [Councilor(p, base_color=base_color) for p in paths]
+        self.councilors = []
 
-    def session(self) -> None:
-        print(colored(f"[ Awaiting dilemma... ]", "white", attrs=["bold"]))
-        input_dilemma = input()
+    def select_councilors(self, dilemma: str) -> None:
+        paths = [f for f in listdir(PERSONALITIES_PATH) if isfile(join(PERSONALITIES_PATH, f)) and f.endswith(".person")]
+        base_color = RandColor(400)
+        base_councilors = [Councilor(p, base_color=base_color) for p in paths]
+        random.shuffle(base_councilors)
+
+        class CouncilorScore(BaseModel):
+            keywords: str
+            score: int
+
+        print(colored(f"[ Convening session... ]", "white", attrs=["bold"]), end="\r")
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-preview-05-20",
+            contents=f"You are a part of an AI council designed to resolve dilemmas through cooperation. Your task is to pick which councilors are best suited to discuss provided dilemma. Councilors are defined by keywords of their specialization. Rate their relevance to the dilemma on a scale from 0 to 100.\n\n# Available councilors:\n{'\n'.join([c.keywords for c in base_councilors])}\n\n# Dilemma to discuss:\n```\n{dilemma}\n```",
+            config={
+                "response_mime_type": "application/json",
+                "response_schema": list[CouncilorScore],
+            },
+        )
+        ratings: list[CouncilorScore] = response.parsed
+        ratings.sort(key=lambda x: -x.score)
+        councilor_mapping = {c.keywords: c for c in base_councilors}
+        self.councilors = [councilor_mapping[r.keywords] for r in ratings][:COUNCILOR_COUNT]
+        random.shuffle(self.councilors)
+        for c in self.councilors:
+            c.assign_id()
 
         councilor_names = [c.real_id for c in self.councilors]
         councilor_names.sort()
         print(colored(f"[ Session convened: {', '.join(councilor_names)} ]", "white", attrs=["bold"]))
+
+    def session(self) -> None:
+        print(colored(f"[ Awaiting dilemma... ]", "white", attrs=["bold"]))
+        input_dilemma = input()
+        self.select_councilors(input_dilemma)
+
         rounds = 12
         last_speaker = None
         history = [("Dilemma", input_dilemma)]
